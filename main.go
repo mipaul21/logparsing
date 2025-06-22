@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+var lastDir string
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: go run main.go <zip|tar file>")
@@ -167,11 +169,37 @@ func processFile(path string, info os.FileInfo, err error) error {
 	}
 
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext == ".log" || ext == ".txt" {
-		return parseFile(path)
+
+	// Print folder header if entering a new directory
+	relDir := filepath.Dir(path)
+	if relDir != lastDir {
+		fmt.Printf("\n==================== Parsing Folder: %s ====================\n", relDir)
+		lastDir = relDir
 	}
 
-	return nil
+	switch ext {
+	case ".log", ".txt":
+		return parseFile(path)
+
+	case ".zip":
+		nestedDir, err := unzip(path)
+		if err != nil {
+			fmt.Printf("Failed to unzip nested archive %s: %v\n", path, err)
+			return nil // Skip, but don't stop the program
+		}
+		return filepath.Walk(nestedDir, processFile)
+
+	case ".tar":
+		nestedDir, err := untar(path)
+		if err != nil {
+			fmt.Printf("Failed to untar nested archive %s: %v\n", path, err)
+			return nil
+		}
+		return filepath.Walk(nestedDir, processFile)
+
+	default:
+		return nil // skip unknown file types
+	}
 }
 
 func parseFile(path string) error {
